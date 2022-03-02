@@ -1,0 +1,52 @@
+pipeline {
+    agent any
+    parameters {
+        choice(name: 'Environment', choices: ['dev', 'prod'], description: 'Select Environment')
+    triggers {
+      pollSCM('H/2 * * * *') 
+    }          
+    stages {
+      // checkout the latest code from the github
+    	stage('Checkout'){
+    		steps {
+          script{
+            def checkoutBranch = params.Environment;
+            git poll:true, credentialsId: '899fddbe-5cd9-36d1-8908-9bf0991ccd5d', 
+            url: 'https://github.com/purnimachoudhary/DevOps_Assignment.git',
+            branch: checkoutBranch
+          }
+    		}
+    	}
+      stage('Build & Push docker image') {
+        steps {
+          script{
+            withCredentials([usernamePassword( credentialsId: 'dockerHubCredentials', usernameVariable: 'USERNAME', passwordVariable: 'PASSWORD')]) {
+              bat "docker build -t purnimachoudhary/devops-test:${env.BUILD_ID} ."
+              bat "docker login -u ${USERNAME} -p ${PASSWORD}"
+              bat "docker push purnimachoudhary/devops-test:${env.BUILD_ID}"
+              }
+            }
+          }
+        }
+  	  stage('Deploy') {
+        steps {
+          script{
+            try {
+                bat "docker stop nodejsTest"
+                bat "docker container rm nodejsTest"
+              } catch(Exception err){} 
+            finally {
+                // start a new container
+                 def checkoutBranch = params.Environment;
+                if(checkoutBranch == 'dev'){
+                  bat "docker run -d -p 8888:8080 --name nodejsTest purnimachoudhary/devops-test:${env.BUILD_ID}"
+                }
+                if(checkoutBranch == 'prod'){
+                  bat "docker run -d -p 8889:8080 --name nodejsTest purnimachoudhary/devops-test:${env.BUILD_ID}"
+                }
+              }
+            }
+          }
+        }
+    }
+}
